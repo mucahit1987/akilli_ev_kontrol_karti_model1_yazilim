@@ -1,18 +1,17 @@
 #include <Arduino.h>
+#include "config.h"
+#include "pinmap.h"
+#include "temperature_control.h"
 
-// put function declarations here:
-int myFunction(int, int);
+float moduleTemps[4];
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  Serial.begin(9600);
+  setupAllPins();
+  setupZeroCrossInterrupt();     // 💥 ZCD interrupt tanımlandı
+  setFanSpeed(30);               // 🔧 Fan hızı %50 başlatıldı
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  
 }
