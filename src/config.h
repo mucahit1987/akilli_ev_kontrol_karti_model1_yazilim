@@ -1,6 +1,11 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#define FLOOR_ID  "up32"     // alt kat kartına yüklerken "down32" yap
+
+#define MQTT_USER  "mqttuser"
+#define MQTT_PASS  "123"
+
 // ------------------------------
 // 🟧 YÜKSEK GÜÇLÜ TRIYAK ÇIKIŞLARI
 // ------------------------------
