@@ -1,39 +1,71 @@
+/*********************************************************************
+ *  main.cpp  –  Merisoft Kontrol Kartı  (Arduino Mega 2560)
+ * -------------------------------------------------------------------
+ *  • setupAllPins()            → tüm çıkışları LOW yapar
+ *  • MQTT/Ethernet başlatır    → mqttInit / mqttLoop
+ *  • Fan & sıcaklık FSM’i      → updateTemperatureControl  (≈2 s)
+ *  • Triyak tetiklemesi        → serviceTriac (her döngü)
+ *  • Watch-Dog (2 s)           → kilitlenmeye karşı güvence
+ *********************************************************************/
+
 #include <Arduino.h>
-#include "config.h"
-#include "pinmap.h"
-#include "temperature_control.h"
-#include "mqtt_haberlesme.h"
-#include "test_util.h"
 #include <avr/wdt.h>
-#include "tanimlamalar.h"
+
+#include "config.h"
+#include "pinmap.h"               // setupAllPins()
+#include "temperature_control.h"  // init… / update… / serviceTriac
+#include "mqtt_haberlesme.h"      // mqttInit / mqttLoop / mqttProcess…
+#include "tanimlamalar.h"         // pinState[] / dirty[] global dizileri
+
+bool          pinState[32] = {false};     // Home Assistant gösterimi
+volatile bool dirty[32]    = {false};     // Publish kuyruğu işareti
+
+volatile bool moduleLocked[8] = {false};   // hepsi açık
 
 
-uint32_t lastFanMs = 0;
+/* ---------- Zamanlayıcılar ---------- */
+static uint32_t tFan = 0;          // Son fan-FSM güncellemesi (ms)
 
-bool pinState[32];          // Çıkışın son durumu
-volatile bool dirty[32];    // Yayınlanacaklar kuyruğu
+/*********************************************************************
+ *  SETUP  –  yalnızca 1 kez
+ *********************************************************************/
+void setup()
+{
+    Serial.begin(9600);
 
-void setup() {
-  Serial.begin(9600);
-  setupAllPins();                     // Röleler & triac çıkışları
-  mqttInit();                         // Ethernet + MQTT
-  mqttPublishDiscovery();             // HA’ya ilk tanıtım
-  //setupZeroCrossInterrupt();          // Fan faz kontrolü
-  wdt_enable(WDTO_2S);
+    /* 1) Donanım pinlerini hazırla */
+    setupAllPins();                        // Röle-triyak çıkışlarını LOW
+
+    /* 2) Fan kontrol alt-sistemi */
+    initTemperatureControl();              // ZCD pini + triyağı yapılandır
+
+    /* 3) Ethernet + MQTT */
+    mqttInit();                            // ENC28J60 & broker bağlantısı
+    mqttPublishDiscovery();                // Home Assistant auto-discovery
+
+    /* 4) Watch-Dog (2 s) */
+    wdt_enable(WDTO_2S);
 }
 
-void loop() {
-  mqttLoop();                         // MQTT canlı tut
-  mqttProcessStateQueue();    // dirty[] kuyruğunu boşalt
-  
+/*********************************************************************
+ *  LOOP  –  sonsuz döngü
+ *********************************************************************/
+void loop()
+{
+    /****  A) Triyak tetiklemesini servis et  ****/
+    serviceTriac();                        // Her döngüde çağır ↻
 
-  // ---- Fan kontrol (2 s’de bir) ----
-  //if (millis()-lastFanMs>2000) {
-  //    float temps[4]; readAllModuleTemperatures(temps);
-  //    uint8_t duty = map(constrain(max(max(temps[0],temps[1]),max(temps[2],temps[3])),35,70),35,70,10,100);
-  //    setFanSpeed(duty);
-  //    lastFanMs = millis();
-  //}
+    /****  B) MQTT işle  ****/
+    mqttLoop();                            // mesaj al-gönder
+    mqttProcessStateQueue();               // kirli çıkışları publish et
 
-  wdt_reset();
+    /****  C) Fan & sıcaklık FSM’i  ****/
+    if (millis() - tFan >= 2000)           // ≈ 2 s
+    {
+        updateTemperatureControl();
+        tFan = millis();
+    }
+
+    /****  D) Watch-Dog besle  ****/
+    wdt_reset();
 }

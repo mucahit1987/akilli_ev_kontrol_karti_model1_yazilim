@@ -8,24 +8,6 @@
 #include "tanimlamalar.h"
 
 
-
-
-/* ---------- Donanım pin eşleme tabloları ---------- */
-static const uint8_t yMap[16] = {
-  Y0_PIN,  Y1_PIN,  Y2_PIN,  Y3_PIN,
-  Y4_PIN,  Y5_PIN,  Y6_PIN,  Y7_PIN,
-  Y8_PIN,  Y9_PIN,  Y10_PIN, Y11_PIN,
-  Y12_PIN, Y13_PIN, Y14_PIN, Y15_PIN
-};
-
-static const uint8_t xMap[16] = {
-  X0_PIN,  X1_PIN,  X2_PIN,  X3_PIN,
-  X4_PIN,  X5_PIN,  X6_PIN,  X7_PIN,
-  X8_PIN,  X9_PIN,  X10_PIN, X11_PIN,
-  X12_PIN, X13_PIN, X14_PIN, X15_PIN
-};
-
-
 static const byte MAC[6] = { 0xDE,0xAD,0xBE,0xEF,0xFE,FLOOR_ID[0] };
 static IPAddress broker(192,168,1,113);   // Mosquitto’nun IP’sini buraya yaz
 EthernetClient ethClient;
@@ -34,22 +16,36 @@ PubSubClient   mqttClient(ethClient);
 
 static void callback(char* topic, byte* payload, unsigned int len)
 {
-    // up32/X10/set  ➜ alias = "X10"
-    char* p = strchr(topic,'/'); if (!p) return;
-    char* alias = ++p;             // "X10/set"
+    /* -------- 1) alias'ı ayıkla (X10/Y7) -------- */
+    char* p = strchr(topic,'/');      if (!p) return;
+    char* alias  = ++p;               // "X10/set"
     char* slash2 = strchr(alias,'/'); if (!slash2) return;
-    *slash2 = '\0';                // alias = "X10"
+    *slash2 = '\0';                   // alias = "X10"
 
-    char type = alias[0];          // 'X' ya da 'Y'
-    uint8_t num = atoi(alias+1);   // 0-15
-    uint8_t idx = (type=='Y') ? num : 16+num;
+    char type = alias[0];             // 'X' ya da 'Y'
+    uint8_t num = atoi(alias+1);      // 0-15
+    uint8_t idx = (type=='Y') ? num : 16+num;   // pinState dizin
 
-    bool on = (len>1 && payload[1]=='N');
+    /* -------- 2) ON / OFF belirle -------- */
+    bool on = (len>1 && payload[1]=='N');       // "ON" → true, "OFF" → false
+
+    /* -------- 3) Aşırı ısınma kilidi -------- */
+    if (type=='Y') {                            // yalnız Y-grubu modüller
+        uint8_t modNo = num / 4;                // 4 çıkış = 1 modül
+        if (moduleLocked[modNo] && on) {        // kilitliyken ON isteği
+            char msg[48]; snprintf(msg, 48, "%s: kilit devam ediyor", alias);
+            haNotify("Komut Reddedildi", msg);
+            return;                             // komutu YOK SAY
+        }
+    }
+
+    /* -------- 4) Donanım pinini sür -------- */
     uint8_t hwPin = (type=='Y') ? yMap[num] : xMap[num];
     digitalWrite(hwPin, on);
 
-    pinState[idx] = on;            // ① yeni durum
-    dirty[idx]    = true;          // ② kuyruk işaretle
+    /* -------- 5) Durum dizilerini güncelle -------- */
+    pinState[idx] = on;
+    dirty[idx]    = true;                       // MQTT publish kuyruğu
 }
 
 void mqttInit()
@@ -75,7 +71,7 @@ void reconnect()
             mqttPublishDiscovery();
             mqttClient.subscribe( (String(FLOOR_ID) + "/+/set").c_str() );
         } else {
-            delay(500);
+            //delay(500);
         }
     }
 }
@@ -142,4 +138,45 @@ void mqttPublishDiscovery()
       dev["manufacturer"]= "Merisoft";
       dev["sw_version"]  = "0.1";
   }
+}
+
+/*********************************************************************
+ * 🔔 Aşırı Isınma Uyarısı – MQTT
+ *  topic: <FLOOR_ID>/alert   (ör. “up32/alert”)
+ *  payload:
+ *    {
+ *      "module": 2,          // 0–7 arası modül no
+ *      "temp":   67.3,       // °C
+ *      "state":  "off"       // "off"  → çıkış kapandı
+ *                           // "restored" → tekrar açıldı
+ *    }
+ *********************************************************************/
+void mqttPublishAlert(uint8_t mod, float deg, bool closed)
+{
+    StaticJsonDocument<128> doc;
+    doc["module"] = mod;
+    doc["temp"]   = deg;
+    doc["state"]  = closed ? "off" : "restored";
+
+    char topic[48];
+    sprintf(topic, "%s/alert", FLOOR_ID);   // ör. up32/alert
+
+    char payload[128];
+    serializeJson(doc, payload);
+
+    mqttClient.publish(topic, payload, true); // retained mesaj
+}
+
+void haNotify(const char* title, const char* message)
+{
+    StaticJsonDocument<128> doc;
+    doc["title"]   = title;
+    doc["message"] = message;
+    char payload[128]; serializeJson(doc, payload);
+
+    mqttClient.publish(
+      "homeassistant/service/persistent_notification/create",
+      payload,         // non-retained
+      false
+    );
 }

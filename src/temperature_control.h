@@ -1,12 +1,14 @@
-#ifndef TEMPERATURE_CONTROL_H
-#define TEMPERATURE_CONTROL_H
-
+/**
+ *  temperature_control.h
+ *  ---------------------
+ *  – Sıcaklık sensörlerini oku,
+ *  – 3 kademeli fan kontrol FSM’ini çalıştır,
+ *  – Aşırı ısınan modülü kapat / geri aç,
+ *  – MQTT’ye uyarı gönder.
+ */
+#pragma once
 #include <Arduino.h>
 
-float readTemperature(uint8_t analogPin);
-void readAllModuleTemperatures(float temps[4]);
-
-void setFanSpeed(uint8_t percent);
-void setupZeroCrossInterrupt();  // 🆕 ZCD interrupt kurulum
-
-#endif // TEMPERATURE_CONTROL_H
+void initTemperatureControl();   // setup()’tan çağır
+void updateTemperatureControl(); // döngüde ~2 sn’de bir çağır
+void serviceTriac();

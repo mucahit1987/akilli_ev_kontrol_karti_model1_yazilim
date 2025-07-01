@@ -74,4 +74,20 @@
 #define ZERO_CROSS_PIN 21 // scl
 #define FAN_TRIAC_PIN 20 // sda
 
+/*********************************************************************
+ *  FAN KONTROL PARAMETRELERİ
+ *********************************************************************/
+
+#define FAN_LVL1_IN_C      35      // 1. seviye GİRİŞ   (°C)
+#define FAN_LVL1_OUT_C     32      // 1. seviye ÇIKIŞ   (°C)  (= IN – 2 °C)
+#define FAN_LVL1_SPEED_PCT    40      // Bu sınırda fan % kaçta dursun
+
+#define FAN_LVL2_IN_C      55      // 2. seviye GİRİŞ   (°C)
+#define FAN_LVL2_OUT_C     50      // 2. seviye ÇIKIŞ   (°C)  (= IN – 2 °C)
+#define FAN_LVL3_LIMIT_C      75     // Aşıldığında ilgili modül çıkışları OFF
+
+#define FAN_RESTORE_HYST      3       // Soğuyunca (°C) çıkışları geri aç
+
+
 #endif // CONFIG_H
+
