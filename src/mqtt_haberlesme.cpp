@@ -6,12 +6,60 @@
 #include "mqtt_haberlesme.h"
 #include "pinmap.h"
 #include "tanimlamalar.h"
+#include "current_sense.h"
 
 
 static const byte MAC[6] = { 0xDE,0xAD,0xBE,0xEF,0xFE,FLOOR_ID[0] };
 static IPAddress broker(192,168,1,113);   // Mosquitto’nun IP’sini buraya yaz
 EthernetClient ethClient;
 PubSubClient   mqttClient(ethClient);
+
+
+void publishPowerEnergyDiscovery()
+{
+    char topic[64];
+    char payload[512];
+
+    for (uint8_t ch = 0; ch < NUM_Y_CHANNELS; ch++) {
+
+        /* ------------- POWER ------------- */
+        StaticJsonDocument<512> doc;                 // ← Yerel doc → her tur temiz
+        JsonObject dev = doc.createNestedObject("device");
+        dev["identifiers"][0] = FLOOR_ID;
+        dev["name"]           = "Merisoft Kart";
+        dev["model"]          = "Mega+ENC28J60";
+
+        doc["device_class"]        = "power";
+        doc["state_class"]         = "measurement";
+        doc["unit_of_measurement"] = "W";
+        doc["name"]                = String("Y") + ch + " Power";
+        doc["state_topic"]         = String(FLOOR_ID) + "/Y" + ch + "/power";
+        doc["unique_id"]           = String(FLOOR_ID) + "_pow_Y" + ch;
+
+        snprintf(topic,sizeof(topic),
+                 "homeassistant/sensor/%s/Y%u_power/config", FLOOR_ID, ch);
+        serializeJson(doc, payload, sizeof(payload));
+        mqttClient.publish(topic, payload, true);
+
+        /* ------------- ENERGY ------------ */
+        doc.clear();                                   // Tertemiz
+        dev = doc.createNestedObject("device");
+        dev["identifiers"][0] = FLOOR_ID;
+
+        doc["device_class"]        = "energy";
+        doc["state_class"]         = "total_increasing";
+        doc["unit_of_measurement"] = "Wh";
+        doc["name"]                = String("Y") + ch + " Energy";
+        doc["state_topic"]         = String(FLOOR_ID) + "/Y" + ch + "/energy";
+        doc["unique_id"]           = String(FLOOR_ID) + "_ener_Y" + ch;
+
+        snprintf(topic,sizeof(topic),
+                 "homeassistant/sensor/%s/Y%u_energy/config", FLOOR_ID, ch);
+        serializeJson(doc, payload, sizeof(payload));
+        mqttClient.publish(topic, payload, true);
+    }
+}
+
 
 
 static void callback(char* topic, byte* payload, unsigned int len)
@@ -104,7 +152,7 @@ void mqttProcessStateQueue()
 
 void mqttPublishDiscovery()
 {
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<768> doc;
   JsonObject dev = doc.createNestedObject("device");
   dev["identifiers"][0] = FLOOR_ID;
   dev["name"]        = "Merisoft Kontrol Kartı";
@@ -113,7 +161,7 @@ void mqttPublishDiscovery()
   dev["sw_version"]  = "0.1";
 
   char topic[64];
-  char payload[400];
+  char payload[768];
 
   for (uint8_t i = 0; i < 32; i++) {
       doc["name"]          = (i < 16) ? String("Y") + i   : String("X") + (i-16);
@@ -138,6 +186,8 @@ void mqttPublishDiscovery()
       dev["manufacturer"]= "Merisoft";
       dev["sw_version"]  = "0.1";
   }
+
+  publishPowerEnergyDiscovery();
 }
 
 /*********************************************************************
@@ -179,4 +229,22 @@ void haNotify(const char* title, const char* message)
       payload,         // non-retained
       false
     );
+}
+
+void mqttPublishPowerEnergy()
+{
+    char topic[40];
+    char buf[16];
+
+    for (uint8_t ch = 0; ch < 16; ch++) {
+        /* --- Power (W) --- */
+        dtostrf(Y_powerW[ch] , 0, 1, buf);
+        sprintf(topic, "%s/Y%u/power",  FLOOR_ID, ch);
+        mqttClient.publish(topic, buf);
+
+        /* --- Energy (Wh) --- */
+        dtostrf(Y_energyWh[ch], 0, 2, buf);
+        sprintf(topic, "%s/Y%u/energy", FLOOR_ID, ch);
+        mqttClient.publish(topic, buf);
+    }
 }

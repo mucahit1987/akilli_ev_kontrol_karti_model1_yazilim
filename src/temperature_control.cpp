@@ -27,7 +27,7 @@ static uint8_t fanLevel = 0;   // 0 = kapalı, 1 = PWM (%), 2 = tam hız
 //--------------------------------------------------------------
 //  KONFİG‑MAKROLAR‑MAKROLAR
 //--------------------------------------------------------------
-#define TEMP_SERIAL_DEBUG   1      // 1 → Seri monitöre sıcaklık yaz
+#define TEMP_SERIAL_DEBUG   0      // 1 → Seri monitöre sıcaklık yaz
 #define ADC_MAX             1023.0f
 #define R0_25C              10000.0f    // 25 °C NTC direnci (Ω)
 #define BETA_NTC            3950.0f
