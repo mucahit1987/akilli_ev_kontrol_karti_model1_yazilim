@@ -17,9 +17,28 @@
 #include "mqtt_haberlesme.h"
 #include "tanimlamalar.h"
 
+// ---- Yardımcılar (dosyanın başına uygun bir yere) ----
+extern void cs_pauseADC();
+extern void cs_resumeADC();
+
+static inline uint16_t readADC_fast(uint8_t pin) {
+  (void)analogRead(pin);      // MUX otursun diye boş okuma
+  return analogRead(pin);     // gerçek örnek
+}
+
+// Opsiyonel: tek atımlık sapmaları söndürmek için median-of-3
+static inline uint16_t med3(uint16_t a, uint16_t b, uint16_t c) {
+  if (a > b) { uint16_t t=a; a=b; b=t; }
+  if (b > c) { uint16_t t=b; b=c; c=t; }
+  if (a > b) { uint16_t t=a; a=b; b=t; }
+  return b;
+}
+
+
 //--------------------------------------------------------------
 //  İLERİ BİLDİRİMLER (forward declarations)
 //--------------------------------------------------------------
+
 void zeroCrossISR();                         // ZCD kesmesi ISR
 void setFanSpeed(uint8_t pct);               // Fan PWM fonksiyonu
 static uint8_t fanLevel = 0;   // 0 = kapalı, 1 = PWM (%), 2 = tam hız
@@ -27,7 +46,7 @@ static uint8_t fanLevel = 0;   // 0 = kapalı, 1 = PWM (%), 2 = tam hız
 //--------------------------------------------------------------
 //  KONFİG‑MAKROLAR‑MAKROLAR
 //--------------------------------------------------------------
-#define TEMP_SERIAL_DEBUG   0      // 1 → Seri monitöre sıcaklık yaz
+#define TEMP_SERIAL_DEBUG   1      // 1 → Seri monitöre sıcaklık yaz
 #define ADC_MAX             1023.0f
 #define R0_25C              10000.0f    // 25 °C NTC direnci (Ω)
 #define BETA_NTC            3950.0f
@@ -70,6 +89,16 @@ static float adcToC(uint16_t adc)
 }
 
 static float readNTC(uint8_t pin) { return adcToC(analogRead(pin)); }
+
+static inline float readNTC_median3_atomic(uint8_t pin) {
+  cs_pauseADC();                               // Timer1 akım ISR'ını duraklat
+  uint16_t x = readADC_fast(pin);
+  uint16_t y = readADC_fast(pin);
+  uint16_t z = readADC_fast(pin);
+  cs_resumeADC();                              // tekrar devreye al
+  uint16_t m = med3(x, y, z);
+  return adcToC(m);
+}
 
 /** 4 Y‑çıkışını topluca aç/kapat */
 static void switchModule(uint8_t mod, bool on)
@@ -132,10 +161,10 @@ void updateTemperatureControl()
     //----------------------------------
     // 2) Sıcaklık okuma
     //----------------------------------
-    realTemp[0] = readNTC(MODULE1_THERMISTOR_PIN);
-    realTemp[1] = readNTC(MODULE2_THERMISTOR_PIN);
-    realTemp[2] = readNTC(MODULE3_THERMISTOR_PIN);
-    realTemp[3] = readNTC(MODULE4_THERMISTOR_PIN);
+    realTemp[0] = readNTC_median3_atomic(MODULE1_THERMISTOR_PIN);
+    realTemp[1] = readNTC_median3_atomic(MODULE2_THERMISTOR_PIN);
+    realTemp[2] = readNTC_median3_atomic(MODULE3_THERMISTOR_PIN);
+    realTemp[3] = readNTC_median3_atomic(MODULE4_THERMISTOR_PIN);
 
     float T[4];
     for (uint8_t i = 0; i < 4; ++i)

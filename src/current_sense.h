@@ -12,3 +12,6 @@ void  energyTick(uint32_t dtMs);   // dt = ms  (ana döngüde 1 s)
 float getIrms (uint8_t ch);        // A
 float getPower(uint8_t ch);        // W
 float getEnergy(uint8_t ch);       // Wh
+
+void cs_pauseADC();   // NTC okurken Timer1 Compare A kesmesini kapat
+void cs_resumeADC();  // NTC okuması biter bitmez tekrar aç

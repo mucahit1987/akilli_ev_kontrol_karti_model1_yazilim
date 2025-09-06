@@ -1,4 +1,4 @@
-#define MQTT_MAX_PACKET_SIZE 512
+#define MQTT_MAX_PACKET_SIZE 1024
 #include <UIPEthernet.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>

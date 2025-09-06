@@ -141,6 +141,30 @@ void initCurrentSense() {
   setupTimer1();
 }
 
+// dosyanın uygun bir yerine ekle (ör. setupTimer1() fonksiyonunun hemen altı)
+static volatile uint8_t cs_pause_depth = 0;
+
+void cs_pauseADC() {
+  uint8_t s = SREG; cli();
+  if (cs_pause_depth == 0) {
+    // Timer1 Compare A kesmesini kapat (ISR(TIMER1_COMPA_vect) çalışmasın)
+    TIMSK1 &= ~(1 << OCIE1A);
+  }
+  cs_pause_depth++;
+  SREG = s;
+}
+
+void cs_resumeADC() {
+  uint8_t s = SREG; cli();
+  if (cs_pause_depth > 0) {
+    cs_pause_depth--;
+    if (cs_pause_depth == 0) {
+      TIMSK1 |= (1 << OCIE1A);
+    }
+  }
+  SREG = s;
+}
+
 // 6.2. sampleCurrentSensors  (ana döngü => 10 ms'de bir çağrılmalı)
 void sampleCurrentSensors()
 {
